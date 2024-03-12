@@ -14,6 +14,7 @@ from sklearn.decomposition import PCA
 from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 from xgboost import XGBClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.neighbors import KNeighborsClassifier
@@ -191,6 +192,7 @@ classifiers["DecisionTree"] = DecisionTreeClassifier()
 classifiers["RandomForest"] = RandomForestClassifier()
 classifiers["KNN"] = KNeighborsClassifier(n_neighbors=3)
 classifiers["XGBoost"] = XGBClassifier()
+classifiers["LogisticRegression"] = LogisticRegression(max_iter=1000)
 
 def get_models_accuracy(classifiers,X_train,X_test,y_train,y_test):
     for cls_name in classifiers.keys():
