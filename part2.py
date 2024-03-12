@@ -25,7 +25,7 @@ def collect_images_info(root_dir):
         main_class_path = os.path.join(root_dir, main_class)
         if os.path.isdir(main_class_path):
             for img_name in os.listdir(main_class_path):
-                if img_name.endswith('.png'):
+                if img_name.endswith('.jpg'):
                     img_path = os.path.join(main_class_path, img_name)
                     label = f"{main_class}"
                     data.append((img_name, img_path, label))
@@ -41,7 +41,7 @@ def image_to_array(img_path):
     return img_array
 
 # 收集图片信息
-root_dir = './dataset'  # 更改为你的图片根目录
+root_dir = './images/train'  # 更改为你的图片根目录
 images_info = collect_images_info(root_dir)
 
 # 创建DataFrame
@@ -56,6 +56,9 @@ df['ImageArray'] = df['ImagePath'].progress_apply(image_to_array)
 # 移除不再需要的ImagePath列
 df.drop('ImagePath', axis=1, inplace=True)
 df.drop('ImageName', axis=1, inplace=True)
+# print(df.info())
+# print(df.head())
+
 
 # 对标签进行编码
 label_encoder = LabelEncoder()
@@ -63,11 +66,9 @@ df['EncodedLabel'] = label_encoder.fit_transform(df['Label'])
 print("[Emoji data loaded]")
 
 def preprocess_image(image_array):
-    # 颜色空间转换 - RGB到灰度
-    gray_img = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
 
     # 边缘检测 - 使用Canny边缘检测器
-    edges = cv2.Canny(gray_img, 100, 200)
+    edges = cv2.Canny(image_array, 100, 200)
 
     return edges
 
@@ -93,9 +94,6 @@ def extract_sift_features(image_array):
         return []
     return descriptors
 
-
-
-
 df['ColorHistogram'] = df['ImageArray'].apply(lambda x: extract_color_histogram(x))
 print("[Generate color histogram]")
 df['LBPFeatures'] = df['ImageArray'].apply(lambda x: extract_lbp_features(x))
@@ -107,7 +105,6 @@ print("[Edge detected using Canny]")
 
 print("The data frame after extract features:")
 print(df.info())
-
 
 
 
@@ -186,7 +183,7 @@ visualize_sift_features(df['ImageArray'].iloc[0])
 
 
 classifiers = {}
-classifiers["SVC"] = SVC(kernel='linear')
+# classifiers["SVC"] = SVC(kernel='linear')
 classifiers["DecisionTree"] = DecisionTreeClassifier()
 classifiers["RandomForest"] = RandomForestClassifier()
 classifiers["KNN"] = KNeighborsClassifier(n_neighbors=3)
@@ -207,18 +204,18 @@ for img_feature in feature_list:
     X = np.array([np.array(xi) for xi in X])
     y = np.array(df['EncodedLabel'])
 
-    # 归一化处理
+    # # 归一化处理
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
-    print("="*10,"scaled result","="*10)
-    # 数据拆分
-    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.5, random_state=42)
-    get_models_accuracy(classifiers,X_train,X_test,y_train,y_test)
+    # print("="*10,"scaled result","="*10)
+    # # 数据拆分
+    # X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+    # get_models_accuracy(classifiers,X_train,X_test,y_train,y_test)
 
 
     # 降维处理
     if img_feature not in ["LBPFeatures"]:
-        pca = PCA(n_components=32)  # 假设我们想要降到2维
+        pca = PCA(n_components=10)  # 假设我们想要降到2维
         X_pca = pca.fit_transform(X_scaled)
         print("="*10,"scaled+PCA result","="*10)
         X_train, X_test, y_train, y_test = train_test_split(X_pca, y, test_size=0.2, random_state=42)
