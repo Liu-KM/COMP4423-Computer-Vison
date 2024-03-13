@@ -3,23 +3,23 @@ import numpy as np
 import pandas as pd
 import cv2
 from PIL import Image
-from sklearn.preprocessing import LabelEncoder
-from sklearn.model_selection import train_test_split
 from tqdm import tqdm
-from skimage import feature
+from skimage import feature, exposure
 import time
+from xgboost import XGBClassifier
+import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler,MinMaxScaler
 from sklearn.decomposition import PCA
 from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import confusion_matrix, accuracy_score , ConfusionMatrixDisplay
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from xgboost import XGBClassifier
+from sklearn.preprocessing import LabelEncoder
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.linear_model import LogisticRegression
 
-
+# Read the image data
 def collect_images_info(root_dir):
     data = []
     for main_class in os.listdir(root_dir):
@@ -30,46 +30,63 @@ def collect_images_info(root_dir):
                     img_path = os.path.join(main_class_path, img_name)
                     label = f"{main_class}"
                     data.append((img_name, img_path, label))
+
     return data
 
-
+# Convert the image to array
 def image_to_array(img_path):
     img = Image.open(img_path)
-    #因为图片有透明度4个通道
     img = img.convert('RGB')
     img = img.resize((72,72))
     img_array = np.array(img)
     return img_array
 
-# 收集图片信息
-root_dir = './dataset'  # 更改为你的图片根目录
-images_info = collect_images_info(root_dir)
 
-# 创建DataFrame
+root_dir = './dataset'  
+images_info = collect_images_info(root_dir)
 df = pd.DataFrame(images_info, columns=['ImageName', 'ImagePath', 'Label'])
 
-tqdm.pandas(desc="Progress")
 
-# 假设 image_to_array 是一个自定义函数，用于将图像路径转换为数组
+tqdm.pandas(desc="Progress")
+# Convert the image to array
 df['ImageArray'] = df['ImagePath'].progress_apply(image_to_array)
 
-
-# 移除不再需要的ImagePath列
+# Convert the label to encoded label
+label_encoder = LabelEncoder()
+df['EncodedLabel'] = label_encoder.fit_transform(df['Label'])
+# get the label mapping
+label_mapping = dict(zip(label_encoder.transform(label_encoder.classes_), label_encoder.classes_))
+print(label_mapping)
+# Remove the ImagePath and ImageName columns
 df.drop('ImagePath', axis=1, inplace=True)
 df.drop('ImageName', axis=1, inplace=True)
 
-# 对标签进行编码
-label_encoder = LabelEncoder()
-df['EncodedLabel'] = label_encoder.fit_transform(df['Label'])
 print("[Emoji data loaded]")
+print(df["Label"].value_counts())
 
+# ================Uncomment to load the fer2013 dataset===========================
+
+# #https://www.kaggle.com/code/ahmedmahmoud16/facial-expression-recognition-with-logistic
+# df = pd.read_csv('./fer_data/train.csv')
+# print(df.info())
+# tqdm.pandas(desc="Progress")
+# df['ImageArray'] = df['pixels'].progress_apply(lambda x: np.uint8(np.fromstring(x, dtype=int, sep=' ').reshape(48,48)))
+# # rename column emotion to EncodedLabel
+# df.rename(columns={'emotion':'EncodedLabel'}, inplace=True)
+
+# # change grayscale to RGB
+# df['ImageArray'] = df['ImageArray'].apply(lambda x: cv2.cvtColor(x, cv2.COLOR_GRAY2RGB))
+
+# # Retain only 20 per cent of the data in each category owing to the volume of data
+# df = df.groupby('EncodedLabel').apply(lambda x: x.sample(frac=0.2)).reset_index(drop=True)
+
+
+
+
+# Extract Edge, Color Histogram, LBP, SIFT, HOG features
 def preprocess_image(image_array):
-    # 颜色空间转换 - RGB到灰度
     gray_img = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
-
-    # 边缘检测 - 使用Canny边缘检测器
     edges = cv2.Canny(gray_img, 100, 200)
-
     return edges
 
 def extract_color_histogram(image_array, bins=32):
@@ -94,106 +111,44 @@ def extract_sift_features(image_array):
         return []
     return descriptors
 
+def extract_hog_features(image_array):
+    gray_image = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
+    # Calculate HOG features
+    hog_features= feature.hog(gray_image, visualize=False)
+    # # Enhance the contrast of the HOG image for better visualization
+    # hog_image_rescaled = exposure.rescale_intensity(hog_image, in_range=(0, 10))
+    return hog_features
 
 
 
-df['ColorHistogram'] = df['ImageArray'].apply(lambda x: extract_color_histogram(x))
+
+# Add the features to the dataframe
+
+df['HOGFeatures'] = df['ImageArray'].progress_apply(lambda x: extract_hog_features(x))
+print("[Generate HOG Features]")
+df['ColorHistogram'] = df['ImageArray'].progress_apply(lambda x: extract_color_histogram(x))
 print("[Generate color histogram]")
-df['LBPFeatures'] = df['ImageArray'].apply(lambda x: extract_lbp_features(x))
+df['LBPFeatures'] = df['ImageArray'].progress_apply(lambda x: extract_lbp_features(x))
 print("[Generate lbp features]")
-df['SIFTFeatures'] = df['ImageArray'].apply(lambda x: extract_sift_features(x))
+df['SIFTFeatures'] = df['ImageArray'].progress_apply(lambda x: extract_sift_features(x))
 print("[Generate sift features]")
-df['ImageEdge'] = df['ImageArray'].apply(lambda x: preprocess_image(x))
+df['ImageEdge'] = df['ImageArray'].progress_apply(lambda x: preprocess_image(x))
 print("[Edge detected using Canny]")
 
 print("The data frame after extract features:")
 print(df.info())
 
 
-
-
-import matplotlib.pyplot as plt
-
-def plot_color_histogram(color_histogram):
-    color = ('b', 'g', 'r')
-    for i, col in enumerate(color):
-        plt.plot(color_histogram[i * 32:(i + 1) * 32], color=col)
-        plt.xlim([0, 32])
-    plt.title('Color Histogram')
-    plt.savefig("color-histogram.png")
-    print("color histogram example is saved in ./color-histogram.png")
-
-# 假设你已经提取了某个图像的颜色直方图并存储在ColorHistogram列中
-# 选择第一个图像的颜色直方图进行可视化
-plot_color_histogram(df['ColorHistogram'].iloc[0])
-
-def plot_lbp_features(lbp_features):
-    plt.plot(lbp_features)
-    plt.title('LBP Features Histogram')
-    plt.savefig("lbp-features.png")
-    print("color histogram example is saved in ./lbp-features.png")
-
-plot_lbp_features(df['LBPFeatures'].iloc[0])
-
-def plot_edge_detection(image_edges):
-    # print(image_edges.shape)
-    plt.figure(figsize=(6, 6))
-    plt.imshow(image_edges, cmap='gray')
-    plt.title('Edge Detection Result')
-    plt.axis('off') # 不显示坐标轴
-    plt.savefig("edge-detection.png")
-    print("color histogram example is saved in ./edge-detection.png")
-
-plot_edge_detection(df['ImageEdge'].iloc[0])
-
-def show_lbp_image(image_array):
-    # 首先将图像转换为灰度图，因为LBP通常在灰度图上计算
-    gray_image = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
-    # 计算LBP特征
-    lbp = feature.local_binary_pattern(gray_image, P=8, R=1, method="uniform")
-    # 将LBP特征图标准化到0-255范围内以便可视化
-    lbp_image = (lbp - lbp.min()) / (lbp.max() - lbp.min()) * 255
-    lbp_image = lbp_image.astype("uint8")
-
-    # 显示LBP图像
-    plt.figure(figsize=(6, 6))
-    plt.imshow(lbp_image, cmap='gray')
-    plt.title('LBP Result')
-    plt.axis('off')  # 不显示坐标轴
-    plt.savefig("lbp-img.png")
-    print("color histogram example is saved in ./lbp-img.png")
-
-# 使用示例
-# 假设your_image_array是你想要处理的图像数组
-show_lbp_image(df['ImageArray'].iloc[0])
-
-def visualize_sift_features(image_array):
-    gray = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
-    sift = cv2.SIFT_create()
-    keypoints, descriptors = sift.detectAndCompute(gray, None)
-    
-    sift_image = cv2.drawKeypoints(gray, keypoints, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-    
-    plt.figure(figsize=(10, 10))
-    plt.imshow(sift_image, cmap='gray')
-    plt.title('SIFT Features')
-    plt.axis('off')
-    plt.savefig("sift_features.png")
-    print("sift features example is saved in ./sift-features.png")
-
-visualize_sift_features(df['ImageArray'].iloc[0])
-
-
-
-
+# Model training and evaluation
 classifiers = {}
 classifiers["SVC"] = SVC(kernel='linear')
 classifiers["DecisionTree"] = DecisionTreeClassifier()
 classifiers["RandomForest"] = RandomForestClassifier()
 classifiers["KNN"] = KNeighborsClassifier(n_neighbors=3)
-classifiers["XGBoost"] = XGBClassifier()
+classifiers["XGBoost"] = XGBClassifier() 
 classifiers["LogisticRegression"] = LogisticRegression(max_iter=1000)
 
+# Get the accuracy of the models
 def get_models_accuracy(classifiers,X_train,X_test,y_train,y_test):
     for cls_name in classifiers.keys():
         classifier = classifiers[cls_name]
@@ -202,28 +157,58 @@ def get_models_accuracy(classifiers,X_train,X_test,y_train,y_test):
         accuracy = accuracy_score(y_test, y_pred)
         print(f'{cls_name} Accuracy: {accuracy * 100:.2f}%')
 
-feature_list = ["ImageArray","ColorHistogram","LBPFeatures","ImageEdge"]
+# Feature list
+feature_list = ["ImageArray","ColorHistogram","HOGFeatures","LBPFeatures","ImageEdge"]
 for img_feature in feature_list:
+
     print("="*20,img_feature,"="*20)
     X = np.array(df[img_feature].apply(lambda x: np.array(x).flatten()))
     X = np.array([np.array(xi) for xi in X])
     y = np.array(df['EncodedLabel'])
 
-    # 归一化处理
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    # Normalization
+    X_scaled = StandardScaler().fit_transform(X)
     print("="*10,"scaled result","="*10)
-    # 数据拆分
+    print("XGBoost model may take a long time to train")
+
+    # Data split
     X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.5, random_state=42)
     get_models_accuracy(classifiers,X_train,X_test,y_train,y_test)
 
+    # Dimensionality reduction
+    pca = PCA(n_components=10)  
+    X_pca = pca.fit_transform(X_scaled)
+    print("="*10,"scaled+PCA result","="*10)
+    X_train, X_test, y_train, y_test = train_test_split(X_pca, y, test_size=0.2, random_state=42)
+    get_models_accuracy(classifiers,X_train,X_test,y_train,y_test)
 
-    # 降维处理
-    if img_feature not in ["LBPFeatures"]:
-        pca = PCA(n_components=32)  # 假设我们想要降到2维
-        X_pca = pca.fit_transform(X_scaled)
-        print("="*10,"scaled+PCA result","="*10)
-        X_train, X_test, y_train, y_test = train_test_split(X_pca, y, test_size=0.2, random_state=42)
-        get_models_accuracy(classifiers,X_train,X_test,y_train,y_test)
-
-
+# feature_list = ["ImageArray","ColorHistogram","HOGFeatures","LBPFeatures","ImageEdge"]
+# for img_feature in feature_list:
+#     print("="*10,"test the model with unseen data","="*10)
+#     X = np.array(df[img_feature].apply(lambda x: np.array(x).flatten()))
+#     X = np.array([np.array(xi) for xi in X])
+#     y = np.array(df['EncodedLabel'])
+#     X_scaled = X/255
+#     for classifier in classifiers:
+#         start = time.time()
+#         classifiers[classifier].fit(X_scaled, y)
+#         # unseen_img = [image_to_array('./unseen_data/1.png'),
+#         #               image_to_array('./unseen_data/2.png'),
+#         #               image_to_array('./unseen_data/3.png'),
+#         #               image_to_array('./unseen_data/4.png')]
+#         unseen_img = [image_to_array(f'./unseen_data/{i}.png') for i in range(1,9)]
+#         print(f"Time taken to train {classifier}: {time.time() - start:.2f} seconds")
+#         count = 0
+#         for img in unseen_img:
+#             count += 1
+#             plt.imshow(Image.fromarray(img))
+#             img = img.flatten()
+#             img = np.array([img])
+#             img = img/255
+#             y_pred = classifiers[classifier].predict(img)  # Pass img as a list
+#             predict_result = label_mapping[y_pred[0]]
+#             #plot the unseen image with the predicted label
+#             plt.title(f"Predicted label: {predict_result}")
+#             plt.savefig(f'./unseen_data/{count}_{classifier}.png')
+#             print(f"{predict_result}")
+#             plt.clf()
