@@ -1,0 +1,10 @@
+os
+numpy
+pandas
+opencv-python
+Pillow
+tqdm
+scikit-image
+xgboost
+matplotlib
+scikit-learn
