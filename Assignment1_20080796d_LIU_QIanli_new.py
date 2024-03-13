@@ -17,6 +17,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.linear_model import LogisticRegression
 
 # Read the image data
 def collect_images_info(root_dir):
@@ -52,15 +53,16 @@ tqdm.pandas(desc="Progress")
 # Convert the image to array
 df['ImageArray'] = df['ImagePath'].progress_apply(image_to_array)
 
+# Convert the label to encoded label
+label_encoder = LabelEncoder()
+df['EncodedLabel'] = label_encoder.fit_transform(df['Label'])
+
 # Remove the ImagePath and ImageName columns
 df.drop('ImagePath', axis=1, inplace=True)
 df.drop('ImageName', axis=1, inplace=True)
 
-# Convert the label to encoded label
-label_encoder = LabelEncoder()
-df['EncodedLabel'] = label_encoder.fit_transform(df['Label'])
 print("[Emoji data loaded]")
-
+print(df["Label"].value_counts())
 # Extract Edge, Color Histogram, LBP, SIFT, HOG features
 def preprocess_image(image_array):
     gray_img = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
@@ -124,6 +126,7 @@ classifiers["DecisionTree"] = DecisionTreeClassifier()
 classifiers["RandomForest"] = RandomForestClassifier()
 classifiers["KNN"] = KNeighborsClassifier(n_neighbors=3)
 classifiers["XGBoost"] = XGBClassifier()
+classifiers["LogisticRegression"] = LogisticRegression(max_iter=1000)
 
 # Get the accuracy of the models
 def get_models_accuracy(classifiers,X_train,X_test,y_train,y_test):
@@ -147,12 +150,12 @@ for img_feature in feature_list:
     X_scaled = scaler.fit_transform(X)
     print("="*10,"scaled result","="*10)
 
-    # Data split
-    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.5, random_state=42)
-    get_models_accuracy(classifiers,X_train,X_test,y_train,y_test)
+    # # Data split
+    # X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.5, random_state=42)
+    # get_models_accuracy(classifiers,X_train,X_test,y_train,y_test)
 
     # Dimensionality reduction
-    pca = PCA(n_components=32)  
+    pca = PCA(n_components=10)  
     X_pca = pca.fit_transform(X_scaled)
     print("="*10,"scaled+PCA result","="*10)
     X_train, X_test, y_train, y_test = train_test_split(X_pca, y, test_size=0.2, random_state=42)
