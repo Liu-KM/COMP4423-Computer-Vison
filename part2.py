@@ -22,6 +22,8 @@ from sklearn.linear_model import LogisticRegression
 df = pd.read_csv('./fer_data/train.csv')
 print(df.info())
 
+#https://www.kaggle.com/code/ahmedmahmoud16/facial-expression-recognition-with-logistic
+
 tqdm.pandas(desc="Progress")
 # image_array=[]
 # for i, row in enumerate(df.index):

@@ -12,7 +12,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import confusion_matrix, accuracy_score , ConfusionMatrixDisplay
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
 from sklearn.tree import DecisionTreeClassifier
@@ -136,6 +136,12 @@ def get_models_accuracy(classifiers,X_train,X_test,y_train,y_test):
         y_pred = classifier.predict(X_test)
         accuracy = accuracy_score(y_test, y_pred)
         print(f'{cls_name} Accuracy: {accuracy * 100:.2f}%')
+        con = confusion_matrix(y_test, y_pred)
+        classes = ['Angry','Disgust','Fear','Happy','Sad']
+        disp = ConfusionMatrixDisplay(confusion_matrix=con, display_labels=classes)
+        disp.plot(cmap='Reds')
+        plt.title('the Confusion Matrix')
+        plt.show()
 
 # Feature list
 feature_list = ["ImageArray","ColorHistogram","HOGFeatures","LBPFeatures","ImageEdge"]
@@ -160,5 +166,3 @@ for img_feature in feature_list:
     print("="*10,"scaled+PCA result","="*10)
     X_train, X_test, y_train, y_test = train_test_split(X_pca, y, test_size=0.2, random_state=42)
     get_models_accuracy(classifiers,X_train,X_test,y_train,y_test)
-
-
